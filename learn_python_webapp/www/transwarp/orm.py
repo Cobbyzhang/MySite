@@ -49,8 +49,6 @@ class StringField(Field):
     >>> a = StringField(max_length=10)
     >>> print a.max_length
     10
-    >>> print a._order
-    1
     '''
     def __init__(self,**kw):
         if not 'default' in kw:
@@ -103,11 +101,86 @@ class VersionField(Field):
 
 _triggers = frozenset(['pre_insert','pre_update','pre_delete'])
 
+def _gen_sql(table_name, mappings):
+    pk = None
+    sql = ['-- generating SQL for %s:' % table_name, 'create table `%s` (' % table_name]
+    for f in sorted(mappings.values(), lambda x, y: cmp(x._order, y._order)):
+        if not hasattr(f, 'ddl'):
+            raise StandardError('no ddl in field "%s".' % n)
+        ddl = f.ddl
+        nullable = f.nullable
+        if f.primary_key:
+            pk = f.name
+        sql.append(nullable and '  `%s` %s,' % (f.name, ddl) or '  `%s` %s not null,' % (f.name, ddl))
+    sql.append('  primary key(`%s`)' % pk)
+    sql.append(');')
+    return '\n'.join(sql)
+
 class ModelMetaclass(type):
     def __new__(cls,name,bases,attrs):
-        pass
+        if name == 'Model':
+            return type.__new__(cls,name,bases,attrs)
+        if not hasattr(cls,'subclasses'):
+            cls.subclasses = {}
+        if not name in cls.subclasses:
+            cls.subclasses[name] = name
+        else:
+            logging.warning('Redefine class: %s'%name)
+        mappings = dict()
+        primary_key = None
+        for k,v in attrs.iteritems():
+            if isinstance(v,Field):
+                if not v.name:
+                    v.name = k
+                logging.info('Found mapping:%s->%s' %(k,v))
+                if v.primary_key:
+                    if primary_key is not None:
+                        raise TypeError('No more than 1 primary key in class:%s!')% name
+                    if v.updatable:
+                        logging.warning('NOTE: change primary key to non-updatable')
+                        v.updatable = False
+                    if v.nullable:
+                        logging.warning('NOTE: change primary key to non-nullable')
+                        v.nullable = False
+                    primary_key = v
+                mappings[k] = v
+        if not primary_key.primary_key:
+            raise TypeError('Primary key not defined in class: %s' %name)
+        for k in mappings.iterkeys():
+            attrs.pop(k)
+        if not '__table__' in attrs:
+            attrs['__table__']= name.lower()
+        attrs['__mappings__'] = mappings
+        attrs['__primary_key__'] = primary_key
+        attrs['__sql__'] = _gen_sql(attrs['__table__'],mappings)
+        for trigger in _triggers:
+            if not trigger in attrs:
+                attrs[trigger] = None
+        return type.__new__(cls,name,bases,attrs)
 
 class Model(dict):
+    '''
+    >>> class User(Model):
+    ...     id_number = IntegerField(primary_key=True)
+    ...     name = StringField()
+    ...     email = StringField(updatable = False)
+    ...     passwd = StringField(default = '123456')
+    ...     last_modified = FloatField()
+    ...     def pre_insert(self):
+    ...         self.last_modified = time.time()
+    >>> u = User(id_number=101,name='Cobby',email = 'ycz0098@mail.ustc.edu.cn')
+    >>> u.insert()
+    1L
+    >>> u.email
+    'ycz0098@mail.ustc.edu.cn'
+    >>> r = User.get('101')
+    >>> r.name
+    'Cobby'
+    >>> r.delete()
+    1L
+    >>> print User.get('101')
+    None
+    '''
     __metaclass__ = ModelMetaclass
     def __init__(self, **kw):
         super(Model,self).__init__(**kw)
@@ -123,8 +196,9 @@ class Model(dict):
 
     @classmethod
     def get(cls, pk):
-        pass
-
+        ins = db.select_one('select * from %s where %s=?'%(cls.__table__,cls.__primary_key__.name),pk)
+        return cls(**ins) if ins else None 
+   
     @classmethod
     def find_first(cls, where, *args):
         pass
@@ -149,16 +223,16 @@ class Model(dict):
         pass
 
     def delete(self):
-        pass
+        return db.update('delete from %s where %s=%s '%(self.__class__.__table__, self.__class__.__primary_key__.name,self[self.__class__.__primary_key__.name]))
 
     def insert(self):
-        pass
+        return db.insert(self.__table__, **self)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     db.create_engine()
     db.update('drop table if exists user')
-    db.update('create table user (id int primary key, name text, email text, passwd text, last_modified real)')
+    db.update('create table user (id_number int primary key, name text, email text, passwd text, last_modified real)')
     import doctest
     doctest.testmod()
 

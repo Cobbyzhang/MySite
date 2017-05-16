@@ -43,7 +43,7 @@ class _DbCtx(threading.local):
         return not self.connection is None
     def init(self):
         self.connection = _LazyConnection()
-        logging.info('oen lazy_connection...')
+        logging.info('open lazy_connection...')
         self.transaction = 0
     def cleanup(self):
         self.connection.cleanup()
