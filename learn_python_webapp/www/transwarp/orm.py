@@ -31,6 +31,9 @@ class Field(dict):
         s.append('>')
         return ''.join(s)
 
+    def __repr__(self):
+        return self.name
+
 class IntegerField(Field):
     '''
     >>> a = IntegerField(name='A')
@@ -60,6 +63,8 @@ class StringField(Field):
 class FloatField(Field):
     '''
     >>> a = FloatField()
+    >>> a.default
+    0.0
     '''
     def __init__(self,**kw):
         if not 'default' in kw:
@@ -171,14 +176,23 @@ class Model(dict):
     >>> u = User(id_number=101,name='Cobby',email = 'ycz0098@mail.ustc.edu.cn')
     >>> u.insert()
     1L
+    >>> u.insert()
+    0L
+    >>> u.__class__.get(101).id_number
+    101L
     >>> u.email
     'ycz0098@mail.ustc.edu.cn'
-    >>> r = User.get('101')
+    >>> r = User.get(101)
     >>> r.name
     'Cobby'
+    >>> r.name = 'Zhang'
+    >>> r.update()
+    1L
     >>> r.delete()
     1L
-    >>> print User.get('101')
+    >>> r.delete()
+    0L
+    >>> print User.get(101)
     None
     '''
     __metaclass__ = ModelMetaclass
@@ -189,44 +203,76 @@ class Model(dict):
         try:
             return self[key]
         except KeyError:
-            raise AttributeError(r"'dict' object has no atrribute '%s'"%key)
+            raise AttributeError(r"'dict' object has no atrribute '%s'" % key)
 
     def __setattr__(self, key, value):
         self[key] = value
 
     @classmethod
     def get(cls, pk):
-        ins = db.select_one('select * from %s where %s=?'%(cls.__table__,cls.__primary_key__.name),pk)
+        ins = db.select_one('select * from %s where %s=?'%(cls.__table__,cls.__primary_key__.name),str(pk))
         return cls(**ins) if ins else None 
    
     @classmethod
     def find_first(cls, where, *args):
-        pass
+        d = db.select_one('select * from %s %s' % (cls.__table__,where), *args)
+        return cls(**d) if d else None
 
     @classmethod
     def find_all(cls, where, *args):
-        pass
+        L = db.select('select * from `%s` '% clc.__table__)
+        return [cls(**d) for d in L]
 
     @classmethod
     def find_by(cls, where, *args):
-        pass
+        L = db.select('select * from `%s` %s'%(cls.__table__, where),*args)
+        return [cls(**d) for d in L]
 
     @classmethod
     def count_all(cls):
-        pass
+        return db.select_int('select count(%s) from `%s`'% (cls.__primary_key__.name,cls.__table__))
 
     @classmethod
     def count_by(cls, where, *args):
-        pass
+        return db.select_int('select count(%s) from %s %s'%(cls.__primary_key__, cls.__table__, where), *args)
 
     def update(self):
-        pass
+        self.pre_update and self.pre_update()
+        ins = self.__class__.get(self[self.__primary_key__.name])
+        if not ins:
+            return self.insert()
+        L = []
+        args = []
+        for k,v in self.__mappings__.iteritems():
+            if v.updatable:
+                if hasattr(self,k):
+                    args.append(getattr(self,k))
+                    L.append('%s=?' % k)
+        pk = self.__primary_key__.name
+        args.append(getattr(self,pk))
+        sql = 'update %s set %s where %s=?'%(self.__table__,','.join(L),pk) 
+        return db.update(sql,*args)
 
     def delete(self):
-        return db.update('delete from %s where %s=%s '%(self.__class__.__table__, self.__class__.__primary_key__.name,self[self.__class__.__primary_key__.name]))
+        self.pre_delete and self.pre_delete()
+        pk = self.__primary_key__.name
+        return db.update('delete from %s where %s=%s '%(self.__table__,pk,self[pk]))
 
     def insert(self):
-        return db.insert(self.__table__, **self)
+        self.pre_insert and self.pre_insert()
+        ins = self.__class__.get(self[self.__primary_key__.name])
+        if not ins:
+            for k,v in self.__mappings__.iteritems():
+                if v.insertable:
+                    if not hasattr(self,k):
+                        setattr(self,k,v.default)
+                else:
+                    if k in self.keys():
+                        self.pop(k)
+                        logging.info('You couldn\'t insert key %s'%k)
+            return db.insert(self.__table__, **self)
+        logging.info('Insert Error')
+        return 0L
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)

@@ -1,7 +1,7 @@
 # !/usr/bin/env python
 # coding:utf8
 
-import MySQLdb, threading, logging, functools
+import  threading, logging, functools
 
 class _Engine(object):
     def __init__(self,connect):
@@ -161,8 +161,9 @@ def with_transaction(func):
             return func(*arg, **kw)
     return _wrapper
 
-def create_engine(user='root', passward='1234', db='learn_python_webapp', host='127.0.0.1', port=3306):
+def create_engine(user='Cobby', passward='', db='learn_python_webapp', host='127.0.0.1', port=3306):
     global engine
+    import MySQLdb
     if engine is not None:
         raise DBerror('The engine has been created')
     engine = _Engine(lambda: MySQLdb.connect(user=user, passwd=passward, db=db, host=host, port=port))
@@ -184,7 +185,6 @@ def _select(sql, first, *args):
                 return None
             return Dict(names,values)
         return [Dict(names, x) for x in cursor.fetchall()]
-
     finally:
         if cursor:
             cursor.close()
