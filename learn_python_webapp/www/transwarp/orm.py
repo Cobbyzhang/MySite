@@ -256,11 +256,12 @@ class Model(dict):
     def delete(self):
         self.pre_delete and self.pre_delete()
         pk = self.__primary_key__.name
-        return db.update('delete from %s where %s=%s '%(self.__table__,pk,self[pk]))
+        return db.update('delete from %s where %s=? '%(self.__table__,pk),self[pk])
 
     def insert(self):
         self.pre_insert and self.pre_insert()
-        ins = self.__class__.get(self[self.__primary_key__.name])
+        pk = self.__primary_key__.name
+        ins = self.__class__.get(self[pk]) if hasattr(self,pk) else None
         if not ins:
             for k,v in self.__mappings__.iteritems():
                 if v.insertable:

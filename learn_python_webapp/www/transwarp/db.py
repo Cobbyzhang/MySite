@@ -1,7 +1,12 @@
 # !/usr/bin/env python
 # coding:utf8
 
-import  threading, logging, functools
+import  threading, logging, functools,time,uuid
+
+def next_id(t=None):
+    if t is None:
+        t = time.time()
+    return '%015d%s000'% (int(t*1000),uuid.uuid4().hex)
 
 class _Engine(object):
     def __init__(self,connect):

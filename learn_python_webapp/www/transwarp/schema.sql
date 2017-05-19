@@ -3,6 +3,10 @@
 drop database if exists learn_python_webapp;
 create database learn_python_webapp;
 
+drop user 'Cobby'@'%';
+create user 'Cobby'@'%' identified by '';
+grant all on learn_python_webapp.* to 'Cobby'@'%';
+
 use learn_python_webapp;
 
 create table users (
